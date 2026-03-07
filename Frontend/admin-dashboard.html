@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Quartz AI Admin Dashboard</title>
+    <link rel="stylesheet" href="admin-style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+
+<body>
+    <div class="app">
+        <header>
+            <div class="header-left">
+                <h1>Quartz AI Multi-Device Monitoring</h1>
+                <div class="view-toggle">
+                    <button id="toggleDevices" class="toggle-btn active">
+                        <span class="icon"></span> Devices
+                    </button>
+                    <button id="toggleDetails" class="toggle-btn">
+                        <span class="icon"></span> Details
+                    </button>
+                </div>
+            </div>
+            <div class="status-bar">
+                <span id="serviceStatus" class="status-indicator">●</span>
+                <span id="statusText">Checking...</span>
+                <button id="refreshBtn" class="btn">
+                    <span class="btn-icon">↻</span> Refresh
+                </button>
+            </div>
+        </header>
+
+        <div class="network-status">
+            <span class="status-indicator-small">🟢</span>
+            <span id="networkDiscoveryStatus">Discovering devices on network...</span>
+            <span id="discoveredCount">(0 found)</span>
+        </div>
+        <div id="devicesView" class="view-container active">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon"></div>
+                    <div class="stat-content">
+                        <div class="stat-label">Total Devices</div>
+                        <div class="stat-value" id="totalDevices">0</div>
+                    </div>
+                </div>
+                <div class="stat-card online">
+                    <div class="stat-icon">🟢</div>
+                    <div class="stat-content">
+                        <div class="stat-label">Online</div>
+                        <div class="stat-value" id="onlineDevices">0</div>
+                    </div>
+                </div>
+                <div class="stat-card offline">
+                    <div class="stat-icon">🔴</div>
+                    <div class="stat-content">
+                        <div class="stat-label">Offline</div>
+                        <div class="stat-value" id="offlineDevices">0</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="charts-row">
+                <div class="chart-container">
+                    <h3>Device Status Distribution</h3>
+                    <canvas id="statusChart"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3>Activity Overview</h3>
+                    <canvas id="activityChart"></canvas>
+                </div>
+            </div>
+
+            <h2 class="section-title">Monitored Devices</h2>
+            <div id="deviceGrid" class="device-grid"></div>
+        </div>
+
+        <div id="detailsView" class="view-container">
+            <div class="device-selector-card">
+                <div class="selector-header">
+                    <span class="selector-icon"></span>
+                    <h3>Select Device to Monitor</h3>
+                </div>
+                <select id="deviceSelect" class="device-select">
+                    <option value="">-- Choose a device --</option>
+                </select>
+            </div>
+
+            <div id="selectedDeviceInfo" class="device-info-bar" style="display: none;">
+                <div class="info-item">
+                    <span class="info-label">Device:</span>
+                    <span class="info-value" id="selectedDeviceName">-</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Status:</span>
+                    <span class="info-value" id="selectedDeviceStatus">-</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Last Seen:</span>
+                    <span class="info-value" id="selectedDeviceLastSeen">-</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">IP Address:</span>
+                    <span class="info-value" id="selectedDeviceIP">-</span>
+                </div>
+            </div>
+
+            <div id="deviceDashboard" class="dashboard"></div>
+        </div>
+
+        <div id="lastUpdated" class="last-updated"></div>
+    </div>
+
+    <script src="admin-renderer.js"></script>
+</body>
+
+</html>

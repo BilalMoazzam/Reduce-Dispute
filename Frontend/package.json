@@ -1,0 +1,18 @@
+{
+  "name": "quartz-desktop",
+  "version": "2.0.0",
+  "description": "Quartz AI Multi-Device Monitoring System",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "bonjour": "^3.5.1",
+    "electron": "^40.6.1",
+    "electron-peer-connection": "^1.0.6"
+  }
+}

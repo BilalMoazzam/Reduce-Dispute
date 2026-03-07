@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Quartz AI Dashboard</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app">
+        <header>
+            <h1>Quartz AI Monitoring</h1>
+            <div class="status-bar">
+                <span id="serviceStatus" class="status-indicator">●</span>
+                <span id="statusText">Checking...</span>
+                <button id="refreshBtn" class="btn">↻ Refresh</button>
+            </div>
+        </header>
+
+        <div id="infoBar" class="info-bar">
+            <span id="machineId">Machine ID: --</span>
+            <span id="machineName">Machine Name: --</span>
+            <span id="employeeId">Employee ID: --</span>
+            <span id="userName">User Name: --</span>
+        </div>
+
+        <div id="dashboard" class="dashboard"></div>
+        <div id="lastUpdated" class="last-updated"></div>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html>
