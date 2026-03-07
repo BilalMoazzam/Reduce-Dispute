@@ -1,0 +1,27 @@
+monitoring:
+  network_check: 300   
+  activity_check: 60  
+  compliance_check: 3600 
+  health_check: 300  
+  
+  alert_thresholds:
+    network_timeout: 30
+    application_crash: 3
+    productivity_drop: 30
+    compliance_violation: "immediate"
+  
+  auto_resolve:
+    network_issues: true
+    app_restarts: true
+    time_corrections: true
+  
+  notifications:
+    email:
+      enabled: true
+      supervisor_email: "supervisor@company.com"
+    slack:
+      enabled: false
+      webhook_url: ""
+    teams:
+      enabled: false
+      webhook_url: ""

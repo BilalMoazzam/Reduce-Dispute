@@ -1,0 +1,33 @@
+agents:
+  network:
+    class: agents.network.network
+    type: base
+    enabled: true
+  activity:
+    class: agents.activity.activity
+    type: base
+    enabled: true
+  compliance:
+    class: agents.compliance.compliance
+    type: base
+    enabled: true
+  timekeeper:
+    class: agents.timekeeper.timekeeper
+    type: base
+    enabled: true
+  anomaly:
+    class: agents.anomaly.AnomalyAgent
+    type: custom
+    enabled: true
+  vpn:
+    class: agents.vpn_agent.VPNAgent
+    type: custom
+    enabled: true
+  coordinator:
+    class: agents.coordinator.coordinator
+    type: base
+    enabled: false
+  decision:
+    class: agents.decision.decision
+    type: base
+    enabled: false

@@ -1,0 +1,124 @@
+{
+  "heartbeat_url": "",
+  "heartbeat_timeout": 5,
+  "heartbeat_interval": 60,
+
+  "risk_thresholds": {
+    "observe": 40,
+    "review": 60,
+    "alert": 80,
+    "critical": 95
+  },
+
+  "department_mapping": {
+    "network": "IT",
+    "vpn": "Security",
+    "compliance": "Compliance",
+    "timekeeper": "HR",
+    "activity": "Manager",
+    "anomaly": "SOC"
+  },
+
+  "monitoring": {
+    "network_check": 300,
+    "activity_check": 60,
+    "compliance_check": 3600,
+    "coordinator_check": 60,
+    "timekeeper_check": 600,
+    "health_check": 300,
+    "anomaly_check": 600,
+    "vpn_check": 600,
+    "decision_check": 600,
+    "cycle_sleep": 1
+  },
+
+  "llm": {
+    "provider": "azure_openai",
+    "deployment_name": "gpt-4o-mini",
+    "api_version": "2024-02-01",
+    "endpoint": "${AZURE_OPENAI_ENDPOINT}",
+    "api_key_env": "AZURE_OPENAI_KEY",
+    "temperature": 0.2,
+    "max_tokens": 1000
+  },
+
+  "table_defaults": {
+    "network_logs": {
+      "agent_used": "network",
+      "action": "monitor",
+      "status": "unknown",
+      "vpn_access_level": "none",
+      "duration": "N/A"
+    },
+
+    "activity_logs": {
+      "agent_used": "activity",
+      "action": "monitor",
+      "status": "unknown",
+      "risk_level": "low"
+    },
+
+    "compliance_checks": {
+      "agent_used": "compliance",
+      "action": "review",
+      "status": "pending",
+      "violation_level": "none"
+    },
+
+    "time_entries": {
+      "agent_used": "timekeeper",
+      "action": "review",
+      "status": "pending",
+      "time_correction": "0"
+    },
+
+    "monitoring_logs": {
+      "check_type": "health",
+      "status": "completed",
+      "response_time_ms": 0
+    },
+
+    "anomaly_logs": {
+      "agent_used": "anomaly",
+      "risk_score": 0,
+      "risk_level": "low",
+      "confidence": 0,
+      "requires_human_review": false
+    },
+
+    "vpn_logs": {
+      "agent_used": "vpn",
+      "risk_score": 0,
+      "risk_level": "low",
+      "confidence": 0,
+      "requires_human_review": false
+    },
+
+    "coordinator_logs": {
+      "agent_used": "coordinator",
+      "action": "coordinate",
+      "status": "pending"
+    },
+
+    "decision_logs": {
+      "agent_used": "decision",
+      "action": "decide",
+      "status": "pending"
+    },
+
+    "system_issues": {
+      "auto_resolved": false
+    }
+  },
+
+  "issue_severity": {
+    "network": "high",
+    "system": {
+      "default": "low",
+      "keyword_map": {
+        "High": "medium",
+        "Critical": "high"
+      }
+    }
+  }
+}

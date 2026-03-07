@@ -1,0 +1,10 @@
+rules:
+  - name: "High risk anomaly"
+    condition: "risk_score > 70"
+    action: "reject"
+  - name: "VPN high risk"
+    condition: "risk_level == 'high'"
+    action: "pending"
+  - name: "Human review required"
+    condition: "requires_human_review == True"
+    action: "pending"
