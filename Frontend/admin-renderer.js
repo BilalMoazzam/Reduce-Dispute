@@ -2,8 +2,18 @@ const REFRESH_INTERVAL = 3000;
 let refreshTimer;
 let currentDeviceData = {};
 let devicesList = [];
+let discoveredDevices = [];
+let localDevices = [];
 let statusChart = null;
 let activityChart = null;
+
+console.log('Admin renderer loaded');
+console.log('API available:', window.api);
+
+const originalLog = console.log;
+console.log = function (...args) {
+    originalLog.apply(console, ['[Admin]', ...args]);
+};
 
 function formatBytes(bytes) {
     if (bytes === 0) return '0 B';
@@ -107,7 +117,6 @@ function createCard(type, data) {
 
     card.appendChild(header);
     card.appendChild(summaryDiv);
-
     return card;
 }
 
@@ -117,36 +126,67 @@ function createDeviceCard(device) {
 
     const lastSeen = device.last_seen ?
         new Date(device.last_seen).toLocaleString() : 'Never';
-
-    const statusText = device.status === 'online' ? '🟢 Online' : '🔴 Offline';
+    const statusText = device.status === 'online' ? 'ONLINE' : 'OFFLINE';
     const statusClass = device.status === 'online' ? 'status-online' : 'status-offline';
+    const employeeName = device.employee_id || 'Unknown';
+    const machineId = device.machine_id || 'Unknown';
+    const ipAddress = device.ip_address || 'Unknown';
+    const source = device.remote ? 'Network Discovery' : 'Database';
+    
+    card.setAttribute('data-employee-id', employeeName);
+    card.setAttribute('data-machine-id', machineId);
+    card.setAttribute('data-ip', ipAddress);
+    card.setAttribute('data-remote', device.remote || false);
 
     card.innerHTML = `
         <div class="device-header">
-            <span class="device-name">${device.machine_name || device.machine_id}</span>
+            <span class="device-name">${machineId}</span>
             <span class="device-status ${statusClass}">${statusText}</span>
         </div>
         <div class="device-details">
             <div class="detail-row">
                 <span class="detail-label">👤 Employee:</span>
-                <span class="detail-value">${device.employee_id}</span>
+                <span class="detail-value">${employeeName}</span>
             </div>
             <div class="detail-row">
                 <span class="detail-label">🆔 Machine ID:</span>
-                <span class="detail-value">${device.machine_id}</span>
+                <span class="detail-value">${machineId}</span>
             </div>
             <div class="detail-row">
                 <span class="detail-label">🌐 IP Address:</span>
-                <span class="detail-value">${device.ip_address || 'Unknown'}</span>
+                <span class="detail-value">${ipAddress}</span>
+            </div>
+            <div class="detail-row">
+                <span class="detail-label">📡 Source:</span>
+                <span class="detail-value">${source}</span>
             </div>
         </div>
         <div class="device-footer">
-            <span class="last-seen">${lastSeen}</span>
-            <button class="view-details-btn" onclick="showDeviceDetails('${device.employee_id}')">
-                View Details →
-            </button>
+            <span class="last-seen">🕐 ${lastSeen}</span>
+            <button class="view-details-btn">View Details →</button>
         </div>
     `;
+
+    const viewBtn = card.querySelector('.view-details-btn');
+    viewBtn.addEventListener('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        const empId = card.getAttribute('data-employee-id');
+        console.log('View Details clicked:', empId);
+        if (typeof window.showDeviceDetails === 'function') {
+            window.showDeviceDetails(empId);
+        }
+    });
+
+    card.addEventListener('click', function (event) {
+        if (!event.target.classList.contains('view-details-btn')) {
+            const empId = card.getAttribute('data-employee-id');
+            console.log('Card clicked:', empId);
+            if (typeof window.showDeviceDetails === 'function') {
+                window.showDeviceDetails(empId);
+            }
+        }
+    });
 
     return card;
 }
@@ -258,109 +298,227 @@ async function updateStatus() {
     }
 }
 
+async function checkDatabaseStatus() {
+    try {
+        const users = await window.api.getUsers();
+        const dbStatus = document.getElementById('dbStatus');
+        const dbStatusText = document.getElementById('dbStatusText');
+        const dbDetails = document.getElementById('dbDetails');
+        const dbDiv = document.querySelector('.database-status');
+
+        if (users && !users.error) {
+            dbStatus.className = 'online';
+            dbStatusText.innerHTML = 'Database: <span style="color:#22c55e">Connected</span>';
+            dbDetails.textContent = `(${users.length} users)`;
+            dbDiv.classList.add('online');
+            dbDiv.classList.remove('offline');
+        } else {
+            dbStatus.className = 'offline';
+            dbStatusText.innerHTML = 'Database: <span style="color:#ef4444">Offline</span>';
+            dbDetails.textContent = '(using network discovery only)';
+            dbDiv.classList.add('offline');
+            dbDiv.classList.remove('online');
+        }
+    } catch (err) {
+        console.error('Database check failed:', err);
+        document.getElementById('dbStatus').className = 'offline';
+        document.getElementById('dbStatusText').innerHTML = 'Database: <span style="color:#ef4444">Offline</span>';
+        document.getElementById('dbDetails').textContent = '(connection failed)';
+    }
+}
+
 async function loadDevices() {
     try {
-        devicesList = await window.api.getDevices();
-        const grid = document.getElementById('deviceGrid');
-        const select = document.getElementById('deviceSelect');
-
-        if (!devicesList || devicesList.length === 0) {
-            grid.innerHTML = '<div class="empty">No devices being monitored</div>';
-            select.innerHTML = '<option value="">-- No devices available --</option>';
-
-            document.getElementById('totalDevices').textContent = '0';
-            document.getElementById('onlineDevices').textContent = '0';
-            document.getElementById('offlineDevices').textContent = '0';
-            return;
+        let backendOnline = false;
+        try {
+            const status = await window.api.getStatus();
+            backendOnline = status && status.running;
+        } catch (err) {
+            console.log('Backend is offline');
         }
 
-        const online = devicesList.filter(d => d.status === 'online').length;
-        const offline = devicesList.filter(d => d.status === 'offline').length;
+        localDevices = [];
+        if (backendOnline) {
+            try {
+                const response = await window.api.getDevices();
+                if (response && !response.error) {
+                    localDevices = response;
+                    console.log('Local devices:', localDevices);
+                }
+            } catch (err) {
+                console.error('Failed to get local devices:', err);
+            }
+        }
 
-        document.getElementById('totalDevices').textContent = devicesList.length;
-        document.getElementById('onlineDevices').textContent = online;
-        document.getElementById('offlineDevices').textContent = offline;
+        discoveredDevices = discoveredDevices.map(device => {
+            if (!backendOnline) {
+                return { ...device, status: 'offline' };
+            }
+            return device;
+        });
 
+        const allDevices = [];
+        const seen = new Set();
+
+        localDevices.forEach(device => {
+            const key = `${device.employee_id}:${device.machine_id}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                allDevices.push({
+                    ...device,
+                    local: true,
+                    remote: false,
+                    source: 'local',
+                    status: backendOnline ? device.status : 'offline'
+                });
+            }
+        });
+
+        discoveredDevices.forEach(device => {
+            const exists = allDevices.some(d =>
+                d.machine_id === device.machine_id ||
+                d.ip_address === device.ip_address
+            );
+            if (!exists) {
+                allDevices.push(device);
+            }
+        });
+
+        devicesList = allDevices;
+        updateUI();
+    } catch (err) {
+        console.error('Devices fetch failed:', err);
+    }
+}
+
+function updateUI() {
+    const online = devicesList.filter(d => d.status === 'online').length;
+    const offline = devicesList.filter(d => d.status === 'offline').length;
+
+    document.getElementById('totalDevices').textContent = devicesList.length;
+    document.getElementById('onlineDevices').textContent = online;
+    document.getElementById('offlineDevices').textContent = offline;
+
+    const discoveredCount = document.getElementById('discoveredCount');
+    if (discoveredCount) {
+        discoveredCount.textContent = `(${discoveredDevices.length} found)`;
+    }
+
+    const grid = document.getElementById('deviceGrid');
+    if (!grid) return;
+
+    if (devicesList.length === 0) {
+        grid.innerHTML = '<div class="empty">📭 No devices found</div>';
+    } else {
         grid.innerHTML = '';
         devicesList.forEach(device => {
             grid.appendChild(createDeviceCard(device));
         });
+    }
 
+    const select = document.getElementById('deviceSelect');
+    if (select) {
         select.innerHTML = '<option value="">-- Choose a device --</option>';
         devicesList.forEach(device => {
             const option = document.createElement('option');
-            option.value = device.employee_id;
-            option.textContent = `${device.machine_name || device.machine_id} (${device.employee_id}) - ${device.status}`;
-            if (device.status === 'online') {
-                option.style.color = '#22c55e';
-            } else {
-                option.style.color = '#ef4444';
-            }
+            option.value = device.employee_id || device.machine_id;
+            option.textContent = `${device.machine_name || device.machine_id} - ${device.status}`;
+            option.style.color = device.status === 'online' ? '#22c55e' : '#ef4444';
             select.appendChild(option);
         });
+    }
 
-        // Update charts
+    if (typeof updateCharts === 'function') {
         updateCharts();
-
-    } catch (err) {
-        console.error('Devices fetch failed:', err);
-        document.getElementById('deviceGrid').innerHTML =
-            '<div class="error">Failed to load devices. Is the backend running?</div>';
     }
 }
 
 async function showDeviceDetails(employeeId) {
-    if (!employeeId) return;
+    if (!employeeId) {
+        console.error('No employee ID provided');
+        return;
+    }
+
+    console.log('showDeviceDetails called with:', employeeId);
 
     try {
-        const data = await window.api.getDeviceData(employeeId);
-        currentDeviceData = data;
+        const device = devicesList.find(d => 
+            d.employee_id === employeeId || d.machine_id === employeeId
+        );
 
-        const device = devicesList.find(d => d.employee_id === employeeId);
-
-        if (device) {
-            document.getElementById('selectedDeviceName').textContent =
-                device.machine_name || device.machine_id;
-            document.getElementById('selectedDeviceStatus').innerHTML =
-                device.status === 'online' ?
-                    '<span class="dot-green"></span>Online' :
-                    '<span class="dot-red"></span>Offline';
-            document.getElementById('selectedDeviceLastSeen').textContent =
-                device.last_seen ? new Date(device.last_seen).toLocaleString() : 'Never';
-            document.getElementById('selectedDeviceIP').textContent =
-                device.ip_address || 'Unknown';
-
-            document.getElementById('selectedDeviceInfo').style.display = 'grid';
-        }
-
-        const container = document.getElementById('deviceDashboard');
-        container.innerHTML = '';
-
-        if (!data || Object.keys(data).length === 0) {
-            container.innerHTML = '<div class="empty">No monitoring data available for this device</div>';
+        if (!device) {
+            console.error('Device not found:', employeeId);
+            document.getElementById('deviceDashboard').innerHTML = 
+                '<div class="error">Device not found</div>';
             return;
         }
 
-        for (const [type, typeData] of Object.entries(data)) {
-            const card = createCard(type, typeData);
-            container.appendChild(card);
+        console.log('Found device:', device);
+
+        const infoBar = document.getElementById('selectedDeviceInfo');
+        if (infoBar) {
+            document.getElementById('selectedDeviceName').textContent = 
+                device.machine_name || device.machine_id;
+            document.getElementById('selectedDeviceStatus').innerHTML = 
+                device.status === 'online' ? 
+                '<span class="dot-green"></span>Online' : 
+                '<span class="dot-red"></span>Offline';
+            document.getElementById('selectedDeviceLastSeen').textContent = 
+                device.last_seen ? new Date(device.last_seen).toLocaleString() : 'Never';
+            document.getElementById('selectedDeviceIP').textContent = 
+                device.ip_address || 'Unknown';
+            infoBar.style.display = 'grid';
         }
 
-        // Switch to details tab
         document.getElementById('toggleDevices').classList.remove('active');
         document.getElementById('toggleDetails').classList.add('active');
         document.getElementById('devicesView').classList.remove('active');
         document.getElementById('detailsView').classList.add('active');
 
-        // Set select value
-        document.getElementById('deviceSelect').value = employeeId;
+        const select = document.getElementById('deviceSelect');
+        if (select) {
+            select.value = employeeId;
+        }
+
+        const container = document.getElementById('deviceDashboard');
+        container.innerHTML = '<div class="loading">Loading device data...</div>';
+
+        let data = {};
+        if (device.remote) {
+            data = await window.api.getRemoteDeviceData(device.ip_address, employeeId);
+        } else {
+            data = await window.api.getDeviceData(employeeId);
+        }
+
+        console.log('Device data received:', data);
+        container.innerHTML = '';
+
+        if (!data || data.error) {
+            container.innerHTML = '<div class="empty">No monitoring data available</div>';
+            return;
+        }
+
+        let hasData = false;
+        for (const [type, typeData] of Object.entries(data)) {
+            if (typeData && typeof typeData === 'object') {
+                const card = createCard(type, typeData);
+                container.appendChild(card);
+                hasData = true;
+            }
+        }
+
+        if (!hasData) {
+            container.innerHTML = '<div class="empty">No monitoring data available</div>';
+        }
 
     } catch (err) {
-        console.error('Device data fetch failed:', err);
-        document.getElementById('deviceDashboard').innerHTML =
-            '<div class="error">Failed to load device data</div>';
+        console.error('Error in showDeviceDetails:', err);
+        document.getElementById('deviceDashboard').innerHTML = 
+            '<div class="error">Error: ' + err.message + '</div>';
     }
 }
+
+window.showDeviceDetails = showDeviceDetails;
 
 async function refreshAll() {
     const btn = document.getElementById('refreshBtn');
@@ -370,10 +528,11 @@ async function refreshAll() {
 
     try {
         await updateStatus();
+        await checkDatabaseStatus();
         await loadDevices();
 
         const activeTab = document.querySelector('.view-container.active');
-        if (activeTab.id === 'detailsView') {
+        if (activeTab && activeTab.id === 'detailsView') {
             const selectedDevice = document.getElementById('deviceSelect').value;
             if (selectedDevice) {
                 await showDeviceDetails(selectedDevice);
@@ -399,173 +558,95 @@ function stopAutoRefresh() {
     if (refreshTimer) clearInterval(refreshTimer);
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('toggleDevices').addEventListener('click', () => {
-        document.getElementById('toggleDevices').classList.add('active');
-        document.getElementById('toggleDetails').classList.remove('active');
-        document.getElementById('devicesView').classList.add('active');
-        document.getElementById('detailsView').classList.remove('active');
+if (window.api && window.api.onDeviceDiscovered) {
+    window.api.onDeviceDiscovered((device) => {
+        console.log('New device discovered:', device);
+        const exists = discoveredDevices.some(d =>
+            d.ip_address === device.ip || d.machine_id === device.machine
+        );
+        if (!exists) {
+            discoveredDevices.push({
+                employee_id: device.employee || device.machine,
+                machine_id: device.machine,
+                machine_name: device.name,
+                last_seen: new Date().toISOString(),
+                status: 'online',
+                ip_address: device.ip,
+                remote: true,
+                source: 'discovery'
+            });
+            loadDevices();
+        }
+    });
 
+    window.api.onDeviceLost((device) => {
+        console.log('Device lost:', device);
+        discoveredDevices = discoveredDevices.map(d => {
+            if (d.ip_address === device.ip) {
+                return { ...d, status: 'offline' };
+            }
+            return d;
+        });
         loadDevices();
     });
+}
 
-    document.getElementById('toggleDetails').addEventListener('click', () => {
-        const selectedDevice = document.getElementById('deviceSelect').value;
-        if (selectedDevice) {
-            document.getElementById('toggleDevices').classList.remove('active');
-            document.getElementById('toggleDetails').classList.add('active');
-            document.getElementById('devicesView').classList.remove('active');
-            document.getElementById('detailsView').classList.add('active');
-            showDeviceDetails(selectedDevice);
-        } else {
-            alert('Please select a device first');
-        }
-    });
+document.addEventListener('DOMContentLoaded', () => {
+    const toggleDevices = document.getElementById('toggleDevices');
+    const toggleDetails = document.getElementById('toggleDetails');
+    const devicesView = document.getElementById('devicesView');
+    const detailsView = document.getElementById('detailsView');
+    const refreshBtn = document.getElementById('refreshBtn');
+    const deviceSelect = document.getElementById('deviceSelect');
 
-    document.getElementById('refreshBtn').addEventListener('click', refreshAll);
+    if (toggleDevices) {
+        toggleDevices.addEventListener('click', () => {
+            toggleDevices.classList.add('active');
+            toggleDetails.classList.remove('active');
+            devicesView.classList.add('active');
+            detailsView.classList.remove('active');
+            loadDevices();
+        });
+    }
 
-    document.getElementById('deviceSelect').addEventListener('change', (e) => {
-        if (e.target.value) {
-            showDeviceDetails(e.target.value);
-        } else {
-            document.getElementById('selectedDeviceInfo').style.display = 'none';
-            document.getElementById('deviceDashboard').innerHTML = '';
-        }
-    });
+    if (toggleDetails) {
+        toggleDetails.addEventListener('click', () => {
+            const selectedDevice = deviceSelect ? deviceSelect.value : null;
+            if (selectedDevice) {
+                toggleDevices.classList.remove('active');
+                toggleDetails.classList.add('active');
+                devicesView.classList.remove('active');
+                detailsView.classList.add('active');
+                showDeviceDetails(selectedDevice);
+            } else {
+                alert('Please select a device first');
+            }
+        });
+    }
+
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', refreshAll);
+    }
+
+    if (deviceSelect) {
+        deviceSelect.addEventListener('change', (e) => {
+            if (e.target.value) {
+                showDeviceDetails(e.target.value);
+            } else {
+                const infoBar = document.getElementById('selectedDeviceInfo');
+                if (infoBar) {
+                    infoBar.style.display = 'none';
+                }
+                const dashboard = document.getElementById('deviceDashboard');
+                if (dashboard) {
+                    dashboard.innerHTML = '';
+                }
+            }
+        });
+    }
 
     window.showDeviceDetails = showDeviceDetails;
-
     startAutoRefresh();
 });
 
-let discoveredDevices = [];
-
-window.api.onDeviceDiscovered((device) => {
-    console.log('New device discovered:', device);
-
-    const exists = discoveredDevices.some(d => d.ip_address === device.ip);
-    if (!exists) {
-        discoveredDevices.push({
-            employee_id: device.employee,
-            machine_id: device.machine,
-            machine_name: device.name,
-            last_seen: new Date().toISOString(),
-            status: 'online',
-            ip_address: device.ip,
-            remote: true
-        });
-
-        loadDevices();
-    }
-});
-
-window.api.onDeviceLost((device) => {
-    console.log('Device lost:', device);
-
-    discoveredDevices = discoveredDevices.map(d => {
-        if (d.ip_address === device.ip) {
-            return { ...d, status: 'offline' };
-        }
-        return d;
-    });
-
-    loadDevices();
-});
-
-async function loadDevices() {
-    try {
-        let localDevices = [];
-        try {
-            localDevices = await window.api.getDevices() || [];
-            console.log('Local devices:', localDevices);
-        } catch (err) {
-            console.error('Failed to get local devices:', err);
-        }
-
-        devicesList = [...localDevices, ...discoveredDevices];
-
-        const uniqueDevices = [];
-        const seen = new Set();
-        for (const device of devicesList) {
-            const key = `${device.employee_id}:${device.ip_address}`;
-            if (!seen.has(key)) {
-                seen.add(key);
-                uniqueDevices.push(device);
-            }
-        }
-        devicesList = uniqueDevices;
-
-        const online = devicesList.filter(d => d.status === 'online').length;
-        const offline = devicesList.filter(d => d.status === 'offline').length;
-
-        document.getElementById('totalDevices').textContent = devicesList.length;
-        document.getElementById('onlineDevices').textContent = online;
-        document.getElementById('offlineDevices').textContent = offline;
-
-        const discoveredCount = document.getElementById('discoveredCount');
-        if (discoveredCount) {
-            discoveredCount.textContent = `(${discoveredDevices.length} found)`;
-        }
-
-        const grid = document.getElementById('deviceGrid');
-        if (!grid) return;
-
-        if (devicesList.length === 0) {
-            grid.innerHTML = '<div class="empty">📭 No devices found</div>';
-            return;
-        }
-
-        grid.innerHTML = '';
-        devicesList.forEach(device => {
-            grid.appendChild(createDeviceCard(device));
-        });
-
-        const select = document.getElementById('deviceSelect');
-        if (select) {
-            select.innerHTML = '<option value="">-- Choose a device --</option>';
-            devicesList.forEach(device => {
-                const option = document.createElement('option');
-                option.value = device.employee_id;
-                option.textContent = `${device.machine_name || device.machine_id} (${device.employee_id}) - ${device.status}`;
-                if (device.status === 'online') {
-                    option.style.color = '#22c55e';
-                } else {
-                    option.style.color = '#ef4444';
-                }
-                select.appendChild(option);
-            });
-        }
-
-        if (typeof updateCharts === 'function') {
-            updateCharts();
-        }
-
-    } catch (err) {
-        console.error('Devices fetch failed:', err);
-        const grid = document.getElementById('deviceGrid');
-        if (grid) {
-            grid.innerHTML = '<div class="error">Failed to load devices</div>';
-        }
-    }
-}
-
-async function showDeviceDetails(employeeId) {
-    if (!employeeId) return;
-
-    try {
-        const device = devicesList.find(d => d.employee_id === employeeId);
-
-        if (device && device.remote) {
-            const data = await window.api.getRemoteDeviceData(device.ip_address, employeeId);
-            currentDeviceData = data;
-        } else {
-            const data = await window.api.getDeviceData(employeeId);
-            currentDeviceData = data;
-        }
-
-
-    } catch (err) {
-        console.error('Device data fetch failed:', err);
-    }
-}
 window.addEventListener('beforeunload', stopAutoRefresh);

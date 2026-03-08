@@ -20,40 +20,89 @@ function getLocalIP() {
     return '127.0.0.1';
 }
 
+
 function startBroadcasting() {
     const localIP = getLocalIP();
 
-    fetch('http://127.0.0.1:8001/users')
-        .then(res => res.json())
-        .then(users => {
-            const employeeName = users && users.length > 0 ? users[0].employee_id : process.env.USER || 'unknown';
+    function checkBackendAndBroadcast() {
+        fetch('http://127.0.0.1:8001/status')
+            .then(res => res.json())
+            .then(status => {
+                if (status && status.running) {
+                    return fetch('http://127.0.0.1:8001/users');
+                } else {
+                    throw new Error('Backend not running');
+                }
+            })
+            .then(res => res.json())
+            .then(users => {
+                const employeeName = users && users.length > 0 ? users[0].employee_id : 'unknown';
 
-            bonjourService = bonjour.publish({
-                name: `Quartz-${os.hostname()}`,
-                type: 'quartz',
-                port: 8001,
-                txt: {
-                    employee: employeeName,
-                    machine: os.hostname(),
-                    ip: localIP
+                if (bonjourService) {
+                    bonjourService.stop();
+                }
+
+                bonjourService = bonjour.publish({
+                    name: `Quartz-${os.hostname()}`,
+                    type: 'quartz',
+                    port: 8001,
+                    txt: {
+                        employee: employeeName,
+                        machine: os.hostname(),
+                        ip: localIP,
+                        status: 'online'
+                    }
+                });
+
+                console.log(`Broadcasting Quartz service as ${employeeName} on ${localIP}:8001 (backend online)`);
+            })
+            .catch(err => {
+                console.log('Backend not available - stopping broadcast');
+                if (bonjourService) {
+                    bonjourService.stop();
+                    bonjourService = null;
                 }
             });
+    }
 
-            console.log(`Broadcasting Quartz service as ${employeeName} on ${localIP}:8001`);
-        })
-        .catch(err => {
-            console.error('Failed to get employee name:', err);
-            bonjourService = bonjour.publish({
-                name: `Quartz-${os.hostname()}`,
-                type: 'quartz',
-                port: 8001,
-                txt: {
-                    employee: os.hostname(),
-                    machine: os.hostname(),
-                    ip: localIP
+    checkBackendAndBroadcast();
+    setInterval(checkBackendAndBroadcast, 5000);
+}
+
+function monitorBackend() {
+    let backendOnline = false;
+
+    setInterval(() => {
+        fetch('http://127.0.0.1:8001/status')
+            .then(res => res.json())
+            .then(status => {
+                if (status && status.running) {
+                    if (!backendOnline) {
+                        console.log('✅ Backend came online');
+                        backendOnline = true;
+                    }
+                } else {
+                    if (backendOnline) {
+                        console.log('❌ Backend went offline');
+                        backendOnline = false;
+                        if (bonjourService) {
+                            bonjourService.stop();
+                            bonjourService = null;
+                        }
+                    }
+                }
+            })
+            .catch(() => {
+                if (backendOnline) {
+                    console.log('❌ Backend went offline');
+                    backendOnline = false;
+                    if (bonjourService) {
+                        bonjourService.stop();
+                        bonjourService = null;
+                    }
                 }
             });
-        });
+    }, 3000);
 }
 
 function startDiscovery() {
@@ -169,6 +218,7 @@ const menu = Menu.buildFromTemplate([
 Menu.setApplicationMenu(menu);
 
 app.whenReady().then(() => {
+    monitorBackend();
     startBroadcasting();
     startDiscovery();
     createAdminWindow();
